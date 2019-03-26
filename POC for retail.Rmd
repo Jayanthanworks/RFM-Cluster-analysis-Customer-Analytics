@@ -1,0 +1,279 @@
+---
+title: "Customer Analytics for a Retail Store"
+output:
+  word_document: default
+  html_notebook: default
+  pdf_document: default
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# Business Background : 
+# Industry :FMCD (COnsumer Durable)
+# The Retail Brand Store 'X' has got a database of 15406 unique customers in the from 2011 to 2016.
+# The Sales data is of datewise/monthwise and model wise purchase
+
+# Business Objective : 
+#1)To understand the retail consumer purchase pattern 
+#2)To drive special loyalty program for Value customers  
+#3)To Identify segments for Targeted marketing activities for the store
+ 
+                        
+
+# Concepts Exploration: 
+#1)RFM Analysis - ( Recency,Frequency,Monetory)
+#2)Heirarchial Clustering method for segmenting the customer    
+
+                      
+# Flowchart on Model : 
+#1) find RFM metrics for the customers who billed on till year 2016                         
+#2) Exploration with Histogram on multiple parameters     
+#3) Compute Distance metrics
+#4) To Create a hierarchical cluster.
+#5) To Create Dendogram which comes out with suggested cluster Tree 
+#6)To Subset a given cluster with cutomer ID and customerID'slinked cluster.
+
+
+```
+
+```{r}
+getwd()
+setwd("C:/Users/Jayanthan/Downloads")
+retdata<- read.csv("TSR Customer Data1.csv",header = FALSE) 
+class(retdata) # Dataframe
+head(retdata)  # exploring the head 
+```
+
+```{r}
+# Naming the columns 
+colnames(retdata)<- c("Customer_ID","Dateof_invoice","Invoice","Add1","location")
+View(retdata)  # opens as a separte file for viewing the data
+```
+
+```{r}
+# To extract date of purchase and year of purchase seperately
+retdata$Dateof_invoice<-as.Date(retdata$Dateof_invoice,"%Y-%m-%d")
+retdata$yearof_purchase<-as.numeric(format(retdata$Date,"%Y"))
+summary(retdata)# gives the summary of individual header with max values
+# The first purchase was made on 1/4/2010 and last purchase was 3/12-16
+```
+
+```{r}
+library(sqldf)
+# Visualising the existing data - Total Purchase year on year
+ 
+N<-sqldf("SELECT yearof_purchase,COUNT(yearof_purchase)As 'Total Count'from   
+         retdata GROUP BY 1 ORDER BY 1")
+barplot(N$`Total Count`,names.arg = N$yearof_purchase)
+# Observation: The date in year 2016 is available till 3months only.
+# With the given data-Positive Trend is prevalent,purchase increasing for the store from 2010. 
+```
+
+```{r}
+# Visualise - Avg purchases per year 
+ 
+M<-sqldf("SELECT yearof_purchase,AVG(Invoice)As 'Avg amount'from   
+         retdata GROUP BY 1 ORDER BY 1")
+barplot(M$`Avg amount`,names.arg = M$yearof_purchase)
+# Avg purchases year on year have increased for the store
+```
+
+```{r}
+# To extract no of days last purchased from 1-1-2016
+
+retdata$Weeks_since_purchase<-as.numeric(difftime(time1 = "2016-04-4",
+                                                 time2 = retdata$Dateof_invoice,
+                                                 units = "weeks")) 
+head(retdata)                                        
+
+```
+
+```{r}
+
+customer_lastpurchase<-within(retdata, rm(days_since_purchase))
+head(customer_lastpurchase)
+
+# This report gives how many years (Output in weeks/48)last purchased from the outlet.
+
+```
+
+```{r}
+# Summarise in a single variable 
+
+customer_base<- sqldf("SELECT Customer_ID,
+                              MIN(Weeks_since_purchase) AS 'recency',
+                              COUNT(*) AS 'frequency',
+                              AVG(Invoice) As 'Value'
+                       FROM retdata GROUP BY 1")
+
+head(customer_base)
+
+
+
+```
+
+```{r}
+# Insights from Data
+max(customer_base$frequency)  # max time a customer purchased from the outlet is 10
+subset(customer_base,frequency ==max(frequency))
+# identifies which customer has purchased max times ? 
+# SUBRAMANI.A	/9965142481/	6,PUGALUMPERUMAL PURAM	4TH STREET/	TIRUPUR
+
+```
+
+```{r}
+which.max(customer_base$Value)
+# Reference no is 3607
+# VADIVELU. C	VSI/TPR/4808*	GL-M542GDWL.DDWZEBN:LG:REFRIGERATOR - 350+ purchased an avg highest value of 4,30,000.
+```
+
+```{r}
+range(customer_base$Value)
+# The value sold in the outlet was a minimum of 900 to max of Rs 4,30000
+
+```
+
+```{r}
+# Visualisation on RFM 
+
+hist(customer_base$recency)
+# Majority lies with the recdent purchase of almost 3 years(100 weeks) 
+```
+
+```{r}
+boxplot(customer_base$frequency)
+```
+
+```{r}
+options(scipen=999)
+hist(customer_base$Value)
+# Majority of the average customer value purchased is under RS.50000
+
+```
+
+```{r}
+hist(customer_base$frequency)
+# Majority are only time customer and only a considerable purchase more than 1 time in the store.
+```
+
+```{r}
+# To check the distribution of purchase value in a more precise way
+
+# Data transformation 
+
+
+purchase_data<-customer_base
+row.names(purchase_data) = purchase_data$Customer_ID
+purchase_data$Customer_ID= NULL
+head(purchase_data)
+
+purchase_data$Value = log(purchase_data$Value)
+hist(purchase_data$Value)
+# As we can see - majority of the purchase lies between Rs 11000 to 38000 
+
+```
+
+```{r}
+ 
+
+
+# to convert STD Deviation values 
+purchase_data = scale(purchase_data)
+head(purchase_data)
+```
+
+```{r}
+# Hierarchical Segmentation 
+
+sample = seq(1,18678, by =10)
+head(sample)
+customer_sample= customer_base[sample,] # Accesing every 10 th rows in the sampl
+head(customer_sample)
+newdata_sample1 = purchase_data[sample,] # Accesing all the rows in STD data
+head(newdata_sample1)
+
+# compute distance metrics
+d = dist(newdata_sample1)
+
+# hierrachical clustering 
+
+c <- hclust(d,method = "ward.D2")
+
+# plot dendogram
+plot(c)  # As we can see the we can try segregate 7 different clusters based on the cluster distances
+
+# cutting at 7 segments 
+
+members = cutree(c,k=7)
+members
+```
+
+```{r}
+# plotting first 30 customers 
+
+members[1:30]  # gives the customer ID segregated in which cluster's ?
+table(members) # gives the number of customers in each clusters  
+
+
+
+```
+
+```{r}
+
+# show profile of each sgment 
+
+aggregate(customer_sample [,2:4],by =list (members),mean)
+
+# As we can see -we have segmented our customers in to 7 parts on the basis of RFM. The mean of each group is arrived to give us an understanding on which customer segment is potential.
+# Cluster -7,6,1 are the priority customers target with repect to profitability.
+# Driving a loyalty program ,Personalised Value offers to this customers can be included in the marketing promotion.
+#Cluster 2 are not driving business to the outlet. We need to find out what could be the reason on studying this cluster. Focusssed campaign, EMI options targeted to this customers can help us in bringing the customers to the business
+# The frequency is very low for the outlet.We need to improve repeat purchases or come out with tracking customer ID . Probably customers could have purchased again ,but not tracked with phone no.
+```
+
+```{r}
+View(members)
+# This data gives all the customers assigned to each cluster group
+```
+
+```{r}
+customer_sample
+```
+
+
+```{r}
+
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
